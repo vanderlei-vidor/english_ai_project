@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 
 from app.models.weekly_xp import WeeklyXP
-
+from app.models.weekly_results import WeeklyResult
 
 def get_league_from_percentage(top_percentage: int):
 
@@ -15,11 +15,19 @@ def get_league_from_percentage(top_percentage: int):
         }
     elif top_percentage <= 15:
         return {
+            "name": "Platinum",
+            "icon": "🏆",
+            "color": "cyan"
+        }
+    
+    elif top_percentage <= 35:
+        return {
             "name": "Gold",
             "icon": "🥇",
             "color": "gold"
         }
-    elif top_percentage <= 35:
+
+    elif top_percentage <= 60:
         return {
             "name": "Silver",
             "icon": "🥈",
@@ -48,6 +56,9 @@ def close_week(db):
     )
 
     total_users = len(results)
+
+    if total_users == 0:
+        return
 
     for index, record in enumerate(results):
         position = index + 1

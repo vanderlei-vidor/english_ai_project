@@ -1,5 +1,8 @@
+
+
 import requests
 import json
+import time
 
 LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
 
@@ -77,11 +80,36 @@ def generate_response(messages):
         "model": "qwen2.5-7b-instruct",
         "messages": full_messages,
         "temperature": 0.3,
-        "max_tokens": 400
+        "max_tokens": 300
     }
 
-    response = requests.post(LM_STUDIO_URL, json=payload,timeout=60)
-    result = response.json()
+    try:
+        print("=== SENDING TO LM STUDIO ===")
+        print(messages)
+        start_time = time.time()
+
+        response = requests.post(
+            LM_STUDIO_URL,
+            json=payload,
+            timeout=60
+        )
+        print("=== RAW RESPONSE ===")
+        print(response.text)
+        if response.status_code != 200:
+            return {
+                "error": f"LM Studio error: {response.status_code}"
+            }
+        elapsed = time.time() - start_time
+
+        print(f"LM STUDIO RESPONSE TIME: {elapsed:.2f}s")
+
+        result = response.json()
+
+    except Exception as e:
+
+        return {
+            "error": str(e)
+        }
 
     if "error" in result:
         return {"error": result["error"]}

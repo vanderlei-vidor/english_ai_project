@@ -158,46 +158,61 @@ class _RankingScreenState extends State<RankingScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
+
       appBar: AppBar(
         title: const Text("🏆 Weekly Ranking"),
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                const SizedBox(height: 20),
-
-                const Text(
-                  "🔥 Competição Semanal",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // 🏆 PÓDIO TOP 3
-                SlideTransition(
-                  position: _podiumSlide,
-                  child: buildPodium(ranking),
-                ),
-
-                const SizedBox(height: 10),
-
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: ranking.length > 3 ? ranking.length - 3 : 0,
-                    itemBuilder: (context, index) {
-                      return buildUserTile(ranking[index + 3]);
-                    },
-                  ),
-                ),
-              ],
+      body: SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF0F172A), Color(0xFF020617)],
             ),
+          ),
+
+          child: loading
+              ? const Center(child: CircularProgressIndicator(color: Colors.amber,))
+              : Column(
+                  children: [
+                    const SizedBox(height: 20),
+
+                    const Text(
+                      "🔥 Competição Semanal",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // 🏆 PÓDIO TOP 3
+                    SlideTransition(
+                      position: _podiumSlide,
+                      child: buildPodium(ranking),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Expanded(
+                      child: ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: ranking.length > 3 ? ranking.length - 3 : 0,
+                        itemBuilder: (context, index) {
+                          return buildUserTile(ranking[index + 3]);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 
@@ -273,7 +288,7 @@ class _RankingScreenState extends State<RankingScreen>
               Positioned(
                 bottom: 0,
                 child: CircleAvatar(
-                  radius: position == 1 ? 26 : 20,
+                  radius: position == 1 ? 32 : 20,
                   backgroundColor: color,
                   child: Text(
                     position.toString(),
@@ -295,8 +310,8 @@ class _RankingScreenState extends State<RankingScreen>
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
             user["email"],
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            overflow: TextOverflow.fade,
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontWeight: FontWeight.bold,
@@ -320,7 +335,7 @@ class _RankingScreenState extends State<RankingScreen>
             animation: _glowAnimation,
             builder: (context, child) {
               return Container(
-                width: 60,
+                width: position == 1 ? 72 : 60,
                 // Remova a propriedade height: height, o Expanded cuidará disso
                 decoration: BoxDecoration(
                   color: color,

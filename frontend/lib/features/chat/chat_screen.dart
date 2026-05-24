@@ -5,6 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../ranking/ranking_screen.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
+import '../../widgets/voice_orb.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -42,6 +43,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   late FlutterTts _tts;
 
   bool isListening = false;
+  String voiceState = "idle";
+
+  final ScrollController _scrollController = ScrollController();
+
+  double soundLevel = 0;
 
   @override
   void initState() {
@@ -87,7 +93,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _confettiController.dispose();
     _audioPlayer.dispose();
     _controller.dispose();
-
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -130,10 +136,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       setState(() {
         isListening = true;
       });
+      setState(() {
+        voiceState = "listening";
+      });
 
       await _speech.listen(
         localeId: "en_US",
         partialResults: true,
+        onSoundLevelChange: (level) {
+          setState(() {
+            soundLevel = level;
+          });
+        },
         onResult: (result) {
           print("WORDS: ${result.recognizedWords}");
 
@@ -150,6 +164,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     setState(() {
       isListening = false;
+      voiceState = "idle";
     });
   }
 
@@ -167,6 +182,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     await _tts.setPitch(1.0);
 
     await _tts.setVoice({"name": "en-us-x-tpf-local", "locale": "en-US"});
+
+    _tts.setCompletionHandler(() async {
+      setState(() {
+        voiceState = "idle";
+      });
+
+      if (voiceModeEnabled) {
+        await startListening();
+      }
+    });
   }
 
   Future<void> sendMessage() async {
@@ -177,20 +202,32 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       messages.add({"sender": "user", "text": userText});
     });
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+
+        duration: const Duration(milliseconds: 400),
+
+        curve: Curves.easeOut,
+      );
+    });
+    setState(() {
+      voiceState = "thinking";
+    });
+
     final result = await ApiClient.post("/chat", {
       "user_id": "ad32edbf-b496-4e9a-9907-f52aba6a518d",
       "message": userText,
     });
 
     final aiReply = result["ai_response"]["conversation_reply"] ?? "";
+    setState(() {
+      voiceState = "speaking";
+    });
     await _tts.speak(aiReply);
+
     _controller.clear();
 
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    if (voiceModeEnabled) {
-      await startListening();
-    }
     String oldLeague = league;
 
     setState(() {
@@ -209,6 +246,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       progressPercent = result["xp"]["level"]["progress_percentage"];
 
       league = result["xp"]["level"]["name"];
+    });
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     });
 
     // 🎉 XP animation
@@ -348,7 +393,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
         title: const Text("English AI"),
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF020617),
         actions: [
           IconButton(
             icon: const Icon(Icons.emoji_events),
@@ -368,7 +413,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               // 🔥 HEADER PREMIUM
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(color: Colors.black),
+                decoration: const BoxDecoration(color: Color(0xFF0F172A)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -404,10 +449,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   ],
                 ),
               ),
-
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: VoiceOrb(
+                    state: voiceState,  
+                    soundLevel: soundLevel,),
+                ),
+              ),
               // 💬 CHAT AREA
               Expanded(
                 child: ListView.builder(
+                  controller: _scrollController,
                   padding: const EdgeInsets.all(16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {

@@ -10,9 +10,29 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: ChatScreen(),
+
+      theme: ThemeData(
+        brightness: Brightness.dark,
+
+        scaffoldBackgroundColor: const Color(0xFF020617),
+
+        primaryColor: Colors.blueAccent,
+
+        colorScheme: const ColorScheme.dark(
+          primary: Colors.blueAccent,
+          secondary: Colors.amber,
+        ),
+
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+        ),
+      ),
+
+      home: const ChatScreen(),
     );
   }
 }

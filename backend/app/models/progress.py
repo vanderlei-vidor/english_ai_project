@@ -8,5 +8,5 @@ class Progress(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    conversation_id = Column(String, nullable=False)
+    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False)
     score = Column(Integer, nullable=False)
