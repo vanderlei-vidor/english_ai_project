@@ -1,45 +1,89 @@
-# English AI Tutor
+# AI English Tutor
 
-An advanced AI-powered English tutor focused on immersive voice conversation, gamification, and real-time interactive experience.
+An AI-powered English learning platform designed to deliver immersive, adaptive, and personalized language learning experiences.
 
----
+Built with Flutter, FastAPI, PostgreSQL, and LM Studio, the platform combines conversational AI, grammar correction, educational feedback, gamification systems, speech interaction, and persistent memory to create a next-generation language learning experience.
 
-## Features
+## Overview
 
-* 🎙 Voice conversation with AI
-* 🌌 Real-time reactive AI Orb
-* 🧠 Grammar correction and feedback
-* 📘 Educational explanations in Portuguese
-* 🏆 XP and ranking system
-* 🔥 Streak progression
-* 🥇 Weekly leagues and competitive ranking
-* 🎯 CEFR level progression (A1 → C2)
-* ✨ Glassmorphism futuristic UI
-* 🤖 Local AI using LM Studio + Qwen2.5
+AI English Tutor goes beyond traditional chatbots by acting as a personalized language coach capable of:
 
----
+* Conducting natural conversations
+* Correcting grammar mistakes
+* Explaining concepts in Portuguese
+* Adapting content to the learner's level
+* Tracking long-term progress
+* Maintaining learning context through memory systems
+* Motivating users through gamification
+
+The project was designed around the idea that language learning should feel engaging, interactive, and personalized.
+
+## Key Features
+
+### Conversational AI
+
+* Natural language conversations
+* Real-time response generation
+* Context-aware interactions
+* Local AI inference through LM Studio
+
+### Intelligent Feedback
+
+* Grammar correction
+* Personalized explanations
+* Practical examples
+* Adaptive exercises
+
+### Adaptive Learning
+
+* Automatic learner profiling
+* CEFR progression (A1 → C2)
+* Topic detection
+* Personalized recommendations
+
+### Gamification System
+
+* XP progression
+* Achievement badges
+* Daily streaks
+* Weekly leagues
+* Competitive ranking system
+
+### Immersive User Experience
+
+* Glassmorphism UI
+* Real-time response streaming
+* Voice interaction
+* Speech synthesis (TTS)
+* Animated AI presence
+* Premium visual design
 
 ## Tech Stack
 
 ### Frontend
 
 * Flutter
+* Dart
 
 ### Backend
 
 * FastAPI
+* Python
 * SQLAlchemy
 
-### AI
+### Database
+
+* PostgreSQL
+
+### Artificial Intelligence
 
 * LM Studio
-* Qwen2.5-7B-Instruct
-
----
+* Qwen 2.5
+* Conversational AI
+* Adaptive Learning Systems
 
 ## Project Structure
 
-```text
 backend/
 frontend/
 
@@ -48,33 +92,34 @@ ROADMAP.md
 ARCHITECTURE.md
 AI_SYSTEM.md
 GAME_SYSTEM.md
-```
 
----
+## Documentation
 
-## Running Frontend
+Additional project documentation is available:
 
-```bash
-flutter pub get
-flutter run
-```
+* Architecture Overview
+* AI System Design
+* Gamification System
+* Product Roadmap
 
----
-
-## Running Backend
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
----
+These documents provide deeper insights into system architecture, learning mechanics, AI workflows, and future development plans.
 
 ## Vision
 
-Create the most immersive AI English tutor experience possible using:
+To create an AI-powered language learning experience that combines educational effectiveness, conversational intelligence, gamification, and premium user experience into a single platform.
 
-* Real-time voice interaction
-* Cinematic UI/UX
-* Reactive AI presence
-* Gamified learning
-* Personalized progression
+## Status
+
+Active Development
+
+Open to improvements, experimentation, and future expansion.
+
+## Environment Setup
+
+Create a `.env` file based on `.env.example`.
+
+Example:
+
+DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/DATABASE_NAME
+
+LM_STUDIO_URL=http://localhost:1234/v1/chat/completions

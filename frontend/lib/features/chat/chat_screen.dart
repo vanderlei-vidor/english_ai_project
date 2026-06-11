@@ -133,9 +133,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   Future<void> startListening() async {
-    print("START LISTENING");
-
     FocusScope.of(context).unfocus();
+
+    await _speech.stop();
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    print("START LISTENING");
 
     bool available = await _speech.initialize(
       onStatus: (status) async {
@@ -154,7 +158,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         }
       },
       onError: (error) {
-        print("ERROR: $error");
+        print("ERROR: ${error.errorMsg}");
+
+        setState(() {
+          isListening = false;
+          voiceState = "idle";
+        });
       },
     );
 
@@ -237,11 +246,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     // O pulo do gato: desative o awaitSpeakCompletion para teste
     await _tts.awaitSpeakCompletion(true);
 
-    _tts.setCompletionHandler(() {
+    _tts.setCompletionHandler(() async {
       if (!mounted) return;
-      setState(() => voiceState = "idle");
+
+      setState(() {
+        voiceState = "idle";
+      });
+
       if (voiceModeEnabled) {
-        startListening();
+        await Future.delayed(const Duration(milliseconds: 1200));
+
+        if (mounted) {
+          startListening();
+        }
       }
     });
 
