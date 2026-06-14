@@ -19,6 +19,7 @@ from app.services.ranking_service import get_league_from_percentage
 from app.models.streak import Streak
 from app.services.season_service import close_season
 from app.services.weekly_service import check_and_close_week
+from sqlalchemy import func
 
 
 from app.services.score_service import (
@@ -162,12 +163,20 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db)):
 
 @router.get("/ranking/weekly")
 def get_weekly_ranking(db: Session = Depends(get_db)):
-
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
 
+    # ⚡ CORREÇÃO: Descobre quantos usuários totais pontuaram essa semana no app inteiro
+    total_active_users = (
+        db.query(func.count(WeeklyXP.id))
+        .filter(WeeklyXP.week_start == week_start)
+        .scalar()
+        or 1
+    )
+
+    # Puxa o Top 20 incluindo a liga atual salva no cadastro do usuário
     results = (
-        db.query(User.id, User.email, WeeklyXP.total_xp)
+        db.query(User.id, User.email, User.current_league, WeeklyXP.total_xp)
         .join(WeeklyXP, WeeklyXP.user_id == User.id)
         .filter(WeeklyXP.week_start == week_start)
         .order_by(WeeklyXP.total_xp.desc())
@@ -175,62 +184,57 @@ def get_weekly_ranking(db: Session = Depends(get_db)):
         .all()
     )
 
-    total_users = len(results)
     ranking = []
-    position = 1
+    for position, user in enumerate(results, start=1):
+        # ⚡ CORREÇÃO: Porcentagem baseada no universo total de jogadores ativos da semana
+        top_percentage = round((position / total_active_users) * 100)
 
-    for user in results:
-        top_percentage = round((position / total_users) * 100) if total_users > 0 else 100
-        league = get_league_from_percentage(top_percentage)
-
-        ranking.append({
-            "position": position,
-            "user_id": user.id,
-            "email": user.email,
-            "weekly_xp": user.total_xp,
-            "league": league
-        })
-
-        position += 1
+        ranking.append(
+            {
+                "position": position,
+                "user_id": user.id,
+                "email": user.email,
+                "weekly_xp": user.total_xp,
+                "league": user.current_league,  # Puxa a liga real dele do banco
+                "top_percentage": top_percentage,
+            }
+        )
 
     return {
         "week_start": str(week_start),
-        "total_ranked": total_users,
-        "ranking": ranking
+        "total_ranked_in_app": total_active_users,
+        "ranking": ranking,
     }
+
 
 @router.get("/ranking/{user_id}")
 def get_user_ranking_position(user_id: str, db: Session = Depends(get_db)):
+    # 1. Puxa o XP do usuário que fez a requisição
+    user_xp_record = db.query(XP).filter(XP.user_id == user_id).first()
+    if not user_xp_record:
+        return {"error": "Usuário não possui registros de XP no ranking global"}
 
-    results = (
-        db.query(XP.user_id, XP.total_xp)
-        .order_by(XP.total_xp.desc())
-        .all()
+    user_xp = user_xp_record.total_xp
+
+    # ⚡ CORREÇÃO DE ALTA PERFORMANCE: Em vez de carregar a tabela inteira,
+    # apenas contamos quantos usuários têm mais XP do que ele.
+    better_users_count = (
+        db.query(func.count(XP.id)).filter(XP.total_xp > user_xp).scalar()
     )
+    position = better_users_count + 1
 
-    total_users = len(results)
-
-    position = None
-    user_xp = 0
-
-    for index, record in enumerate(results):
-        if record.user_id == user_id:
-            position = index + 1
-            user_xp = record.total_xp
-            break
-
-    if position is None:
-        return {"error": "Usuário não encontrado no ranking"}
-
+    # Total de usuários cadastrados no app para calcular o percentil
+    total_users = db.query(func.count(User.id)).scalar() or 1
     top_percentage = round((position / total_users) * 100)
-    league = get_league_from_percentage(top_percentage)
+
+    league_info = get_league_from_percentage(top_percentage)
 
     return {
         "position": position,
         "total_users": total_users,
         "total_xp": user_xp,
         "top_percentage": top_percentage,
-        "league": league
+        "league": league_info,
     }
 @router.post("/admin/close-season")
 def close_season_endpoint(db: Session = Depends(get_db)):

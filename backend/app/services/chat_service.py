@@ -1,125 +1,117 @@
+import os
 import json
 import time
+import re
 import requests
+from dotenv import load_dotenv
 from app.services.memory_utils import get_top_errors, get_top_topics
+from app.services.exercise_engine import should_generate_exercise, choose_exercise_type
 
-LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
+# Carrega as configurações do .env para não deixar nada hardcoded
+load_dotenv()
+
+LM_STUDIO_URL = os.getenv("LM_STUDIO_URL", "http://localhost:1234/v1/chat/completions")
+MODEL_NAME = os.getenv("LM_STUDIO_MODEL", "qwen2.5-7b-instruct")
 
 SYSTEM_INSTRUCTION = """
-You are a professional English tutor for Brazilian Portuguese speakers.
-You MUST always respond ONLY in valid JSON.
-NEVER write text outside the JSON.
+You are an expert, highly strict English tutor AI for a mobile language learning app. Always return a single, valid JSON object matching the requested schema.
+CRITICAL: Never output any conversational text, greetings, markdown block ticks (like ```json), or explanations BEFORE or AFTER the JSON block.
 
-The JSON format must ALWAYS be:
-{
-  "correction": "",
-  "explanation_pt": "",
-  "example": "",
-  "exercise": "",
-  "conversation_reply": ""
-}
+CRITICAL CORRECTION AND GRADING RULES:
+1. Analyze the VERY LAST user message in the conversation history for any grammatical, syntax, spelling, or structure errors.
+2. Be extremely rigid! Casual spoken errors like "he don't" instead of "he doesn't", missing articles ("a", "an", "the"), or wrong prepositions MUST be caught.
+3. If the user's sentence contains any mistake:
+   - "correction": Provide the full, grammatically corrected sentence.
+   - "explanation_pt": Explain the specific mistake and state the rule clearly in Portuguese.
+   - "example": Provide a brand-new, clean example sentence demonstrating this correct rule.
+4. If and ONLY if the user's sentence is 100% grammatically perfect:
+   - You MUST return exactly: "correction": "Correct! ✨", "explanation_pt": "Sua frase está totalmente correta! Excelente trabalho. 🥳", and "example": "".
+5. Never rewrite an already correct sentence into a different style. If it is correct, accept it.
 
-RULES:
+EXERCISE FORMAT AUTHORITY:
+The exercise MUST exactly follow the selected format and MUST be an unsolved challenge. NEVER provide the answer inside the exercise string.
 
-1. correction
-- ONLY write something if the user made a REAL English mistake.
-- If the sentence is already correct, return "".
-- correction must contain ONLY the corrected sentence.
-- NEVER explain grammar here.
+- multiple_choice: MUST contain answer options.
+  Valid: "Yesterday I _____ a new server. (a) buy (b) bought"
+  Invalid: "Yesterday I bought a new server."
 
+- fill_blank: MUST contain a blank space (_____) and NO options.
+  Valid: "Yesterday I _____ to the repository."
 
-2. explanation_pt
-- Explain the mistake in Brazilian Portuguese.
-- Keep it short, clear, and educational.
-- If there is no mistake, return "".
+- verb_transformation: Provide a sentence in the present/base form and ask the user to transform the specific verb. NEVER give the verb already transformed.
+  Valid: "Change the verb to past tense: I (to deploy) the application yesterday."
 
-3. example
-- Give ONE simple correct English example related to the correction.
-- If there is no correction, return "".
+- sentence_reordering: Provide shuffled words separated by slashes.
+  Valid: "Reorder: yesterday / deployed / I / the / app"
 
-4. exercise
-- Create ONE short English exercise related to the user's mistake.
-- If there is no mistake, return "".
-- Exercises MUST be based on the Exercise Theme provided in the user profile.
-- The Exercise Theme MUST appear inside the exercise sentence whenever possible.
-- Do not create generic exercises when an Exercise Theme exists.
-- If the Exercise Theme is anime, use anime characters, anime series or anime situations.
-- If the Exercise Theme is games, use games, gaming situations or game characters.
-- If the Exercise Theme is technology, use computers, AI, software or technology situations.
-- Prioritize personalization over generic examples.
+- sentence_correction: Provide an incorrect sentence and ask them to fix it.
+  Valid: "Correct the sentence: I code a new script yesterday."
 
-5. conversation_reply
-- ALWAYS continue the conversation naturally in English.
-- Be friendly and conversational.
-- Keep responses short.
-- Ask questions to continue the conversation naturally.
+ADAPTIVE LEARNING & THEME RULES:
+- Focus the exercise and examples strictly on the requested "MANDATORY TARGET SKILL".
+- Adapt all language complexity to the user's English level.
+- Exercises MUST be contextually based on the "Exercise Theme". Do not create generic exercises.
+  * If Theme is anime: use anime characters/plots (e.g., Naruto, Luffy, Konoha).
+  * If Theme is technology: use software, AI, coding, servers, computers, or apps context. NEVER use anime characters or games here.
+- "conversation_reply" MUST NEVER BE EMPTY. Always write a natural, friendly response in English reacting directly to the user's message.
 
-IMPORTANT:
-- Never invent user information.
-- Never hallucinate facts.
-- Never create fake context.
-- Never translate unless necessary.
-- Never claim personal preferences.
-- Never say "my favorite".
-- Never pretend to have personal experiences.
-- You are a tutor, not a participant in the conversation.
-- Do not explain things the user did not ask.
-- Do not overcorrect small informal speech.
-- Focus on conversation fluency.
-- Act like a friendly human tutor, not a grammar robot.
-- Keep the conversation flowing naturally.
-- Avoid correcting every small issue.
-- Prioritize communication and confidence.
-- Do not correct greetings, short answers, or natural casual expressions if they are understandable.
-- If the sentence looks like a speech recognition mistake, infer the most probable intended meaning before correcting.
-- Adapt explanations to beginner and intermediate English learners.
-- Never claim to watch, play, read, see, hear or experience things.
-- Never claim to participate in real-world activities.
-
-PERSONALIZATION RULES:
-
-- Use the user's favorite topics whenever possible.
-- Generate exercises related to the user's favorite topics.
-- Focus exercises on the user's most common mistakes.
-- Adapt explanations to the user's English level.
-- When the user has favorite topics, exercises MUST use those topics.
-- If the user likes anime, anime must appear in the exercise.
-- If the user likes games, games must appear in the exercise.
-- If the user likes technology, technology must appear in the exercise.
-- Prioritize favorite topics over generic examples.
-- Use game examples if the user likes games.
-- Use technology examples if the user likes technology.
-- Make exercises feel personalized and engaging.
-
-EXERCISE RULES:
-
-- For A1 and A2 learners, prefer multiple-choice exercises.
-- For B1 learners, prefer sentence-building exercises.
-- For B2 and above, prefer open-ended exercises.
-- Keep exercises short and focused.
-- Prioritize learning through practice rather than long explanations.
-
-ONLY RETURN VALID JSON.
+Expected Output Format (Strict JSON):
+{{
+  "correction": "string",
+  "explanation_pt": "string",
+  "example": "string",
+  "exercise": "string",
+  "conversation_reply": "string"
+}}
 """
 
 
-def generate_response(messages: list, memory_data: dict):
+def generate_response(messages: list, memory_data: dict) -> dict:
+    # 1️⃣ Extração e tratamento seguro de dados da memória
+    english_level = memory_data.get("english_level", "A2")
 
-    # 🔹 Otimização dos erros comuns
-    top_errors = get_top_errors(memory_data.get("common_errors", {}))
-
-    # 💥 INTEGRANDO SUA NOVA LÓGICA DE TÓPICOS E PERFIL AQUI:
     favorite_topics = memory_data.get("favorite_topics", {})
     if not isinstance(favorite_topics, dict):
         favorite_topics = {}
     top_topics = get_top_topics(favorite_topics)
+    theme = top_topics[0] if top_topics else "general"
 
     weak_skills = memory_data.get("weak_skills", {})
-
     if not isinstance(weak_skills, dict):
         weak_skills = {}
-
     top_weak_skills = get_top_errors(weak_skills)
+
+    top_errors = get_top_errors(memory_data.get("common_errors", {}))
+    exercise_focus = (
+        top_weak_skills[0]
+        if top_weak_skills
+        else (top_errors[0] if top_errors else "past_tense")
+    )
+
+    exercise_type = choose_exercise_type(memory_data)
+    exercise_required = len(weak_skills) > 0 or should_generate_exercise(memory_data)
+
+    # 2️⃣ Geração inteligente e dinâmica de templates com base no TEMA real
+    exercise_example = ""
+    if theme == "technology":
+        templates = {
+            "multiple_choice": "Yesterday I _____ the code. (a) push (b) pushed",
+            "fill_blank": "Yesterday the server _____ down unexpectedly.",
+            "sentence_reordering": "Reorder: yesterday / deployed / I / the / app",
+            "sentence_correction": "Correct the sentence: I code a new script yesterday.",
+            "verb_transformation": "Change the verb to past tense: Python (to update) its libraries yesterday.",
+        }
+        exercise_example = templates.get(exercise_type, "")
+    else:
+        # Fallback padrão / Tema de Anime (Naruto)
+        templates = {
+            "multiple_choice": "Yesterday Naruto _____ to Konoha. (a) go (b) went",
+            "fill_blank": "Yesterday Naruto _____ to Konoha.",
+            "sentence_reordering": "Reorder: yesterday / Naruto / went / Konoha / to",
+            "sentence_correction": "Correct the sentence: Naruto go to Konoha yesterday.",
+            "verb_transformation": "Change the verb to past tense: Naruto (to go) to Konoha yesterday.",
+        }
+        exercise_example = templates.get(exercise_type, "")
 
     learning_profile = (
         f"casual learner interested in {', '.join(top_topics)}"
@@ -127,84 +119,56 @@ def generate_response(messages: list, memory_data: dict):
         else "general English learner"
     )
 
-    exercise_focus = ""
+    # 🔥 Mapeamento visual limpo para debug no console do backend
+    print("\n=== DEBUG BACKEND DATA ===")
+    print(f"LEVEL:         {english_level}")
+    print(f"EXERCISE TYPE: {exercise_type}")
+    print(f"THEME:         {theme}")
+    print(f"TARGET SKILL:  {exercise_focus}")
+    print(f"WEAK SKILLS:   {weak_skills}")
+    print("==========================\n")
 
-    if top_errors:
-        exercise_focus = top_errors[0]
-
-    # Substitui o bloco antigo pelo seu novo 'memory_context' super completo
+    # 3️⃣ Construção do bloco de contexto dinâmico (Injetado no Sistema)
     memory_context = f"""
-User Learning Profile
+### DYNAMIC USER CONTEXT ###
+English Level: {english_level}
+Exercise Format Required: {exercise_type}
+MANDATORY EXERCISE FORMAT TEMPLATE: {exercise_example}
+Learning Classification: {learning_profile}
+Exercise Required Right Now: {"YES" if exercise_required else "NO"}
 
-Current English Level:
-{memory_data.get("english_level", "A1")}
+MANDATORY TARGET SKILL: {exercise_focus}
+Weak Skills List: {", ".join(top_weak_skills) if top_weak_skills else "None"}
+Most Frequent Mistakes: {", ".join(top_errors) if top_errors else "None"}
 
-Most Frequent Mistakes:
-{", ".join(top_errors) if top_errors else "None yet"}
-
-Primary Learning Focus:
-{top_weak_skills[0] if top_weak_skills else exercise_focus}
-
-Favorite Topics:
-{", ".join(top_topics) if top_topics else "None yet"}
-
-Weak Skills:
-{", ".join(top_weak_skills) if top_weak_skills else "None yet"}
-
-Exercise Theme:
-{top_topics[0] if top_topics else "general"}
-
-Preferred Exercise Context:
-{top_topics[0] if top_topics else "general"}
-
-Conversation Style:
-{memory_data.get("conversation_style", "casual")}
-
-Total Conversations:
-{memory_data.get("total_conversations", 0)}
-
-ADAPTIVE LEARNING RULES:
-
-- Use favorite topics whenever possible.
-- Exercises MUST be based on the Exercise Theme.
-- The Exercise Theme MUST appear inside the exercise sentence.
-- Do not create generic exercises.
-- If Exercise Theme is anime, anime characters must appear in the exercise.
-- If Exercise Theme is games, game characters or games must appear in the exercise.
-- If Exercise Theme is technology, computers, AI or technology must appear in the exercise.
-- Focus exercises on the Primary Learning Focus.
-- The Exercise Theme should be used whenever possible.
-- Adapt explanations to the user's English level.
-- Personalize examples.
-- Prioritize exercises that target the user's Weak Skills.
-- If Weak Skills exist, use them as the main learning focus.
-- Weak Skills should influence examples and exercises.
+Exercise Theme: {theme}
+Favorite Topics: {", ".join(top_topics) if top_topics else "None"}
+Conversation Style: {memory_data.get("conversation_style", "casual")}
 """
 
-    # 🔹 Une a instrução base com a nova memória dinâmica filtrada
-    dynamic_system_instruction = SYSTEM_INSTRUCTION + memory_context
+    dynamic_system_instruction = (
+        SYSTEM_INSTRUCTION.strip() + "\n" + memory_context.strip()
+    )
 
-    # 🔹 Monta o payload para a IA
     full_messages = [
         {"role": "system", "content": dynamic_system_instruction}
     ] + messages
 
     payload = {
-        "model": "qwen2.5-7b-instruct",
+        "model": MODEL_NAME,
         "messages": full_messages,
-        "temperature": 0.3,
-        "max_tokens": 300,
-        
+        "temperature": 0.2,
+        "max_tokens": 600,
+        #"response_format": {
+         #   "type": "json_object"
+       # },  # Força o Qwen 2.5 a responder em modo JSON nativo
     }
 
+    # 4️⃣ Envio da Requisição com medição de performance
     try:
         print("=== SENDING TO LM STUDIO ===")
         start_time = time.time()
-
-        response = requests.post(LM_STUDIO_URL, json=payload, timeout=60)
-
-        print("=== RAW RESPONSE ===")
-        print(response.text)
+        response = requests.post(LM_STUDIO_URL, json=payload, timeout=45)
 
         if response.status_code != 200:
             return {
@@ -214,29 +178,68 @@ ADAPTIVE LEARNING RULES:
 
         elapsed = time.time() - start_time
         print(f"LM STUDIO RESPONSE TIME: {elapsed:.2f}s")
-
         result = response.json()
 
     except Exception as e:
         return {"error": f"Request failed: {str(e)}"}
 
-    # 🔥 CORRIGIDO: Validação movida para dentro do fluxo correto
     if not result or "choices" not in result:
         return {"error": "Invalid response structure from LM Studio", "raw": result}
 
-    text = result["choices"][0]["message"]["content"]
+    raw_text = result["choices"][0]["message"]["content"].strip()
 
-    # Limpa possíveis blocos de Markdown injetados pela IA e limpa espaços nas pontas
-    text = text.replace("```json", "").replace("```", "").strip()
+    # 5️⃣ Extrator Regex Não-Guloso Avançado + Sanetização de Markdown
+    # Remove cercas de código geradas acidentalmente antes de aplicar o regex
+    clean_text = raw_text.replace("```json", "").replace("```", "").strip()
 
+    json_match = re.search(r"(\{.*?\})", clean_text, re.DOTALL)
+    if json_match:
+        clean_text = json_match.group(1)
+
+    # 6️⃣ Validação e Normalização do Dicionário de Saída
     try:
-        return json.loads(text)
+        response_json = json.loads(clean_text)
+
+        # Garante fallbacks para chaves vazias ou ausentes
+        if not response_json.get("conversation_reply"):
+            response_json["conversation_reply"] = (
+                "That's interesting! Let's keep practicing."
+            )
+
+        # Se a IA pulou a correção mas ela era necessária, ou se veio vazia por acerto:
+        if not response_json.get("correction"):
+            response_json["correction"] = "Correct! ✨"
+            response_json["explanation_pt"] = (
+                "Sua frase está totalmente correta! Excelente trabalho. 🥳"
+            )
+            response_json["example"] = ""
+
+        elif response_json.get("correction") and not response_json.get(
+            "explanation_pt"
+        ):
+            response_json["explanation_pt"] = (
+                "Observe a estrutura acima para compreender a correção."
+            )
+
+        # Controla se o exercício deve ou não ser exibido ao usuário final
+        if not exercise_required:
+            response_json["exercise"] = ""
+        else:
+            exercise = response_json.get("exercise", "")
+            if not isinstance(exercise, str) or exercise.strip() == "":
+                response_json["exercise"] = f"Let's practice! {exercise_example}"
+
+        return response_json
+
     except json.JSONDecodeError:
-        # Se mesmo assim falhar, tentamos salvar o que sobrou do texto de forma amigável
+        # Recuperação graciosa de desastre (Garante que a conversa no Flutter não trave)
+        print(f"❌ Erro Crítico de Parse no JSON. Texto Bruto: {raw_text}")
         return {
-            "correction": "",
-            "explanation_pt": "Erro ao processar a resposta da IA.",
+            "correction": "Correct! ✨",
+            "explanation_pt": "Análise gramatical indisponível para esta mensagem.",
             "example": "",
             "exercise": "",
-            "conversation_reply": text,
+            "conversation_reply": raw_text
+            if len(raw_text) < 150
+            else "I understood you perfectly! Let's continue chatting.",
         }

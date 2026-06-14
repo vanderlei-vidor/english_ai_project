@@ -4,17 +4,41 @@ def detect_english_level(user_message):
 
     words = text.split()
 
-    # 🔥 VERY BASIC
-    if len(words) <= 3:
+    word_count = len(words)
+
+    score = 0
+
+    # tamanho
+    if word_count > 3:
+        score += 1
+
+    if word_count > 8:
+        score += 1
+
+    if word_count > 15:
+        score += 1
+
+    # passado
+    if any(word in text for word in ["went", "played", "watched", "studied", "worked"]):
+        score += 1
+
+    # conectores
+    if any(
+        word in text for word in ["because", "although", "however", "while", "after"]
+    ):
+        score += 1
+
+    # futuro
+    if "will" in text:
+        score += 1
+
+    if score <= 1:
         return "A1"
 
-    # 🔥 SIMPLE SENTENCES
-    if len(words) <= 8:
+    if score <= 3:
         return "A2"
 
-    # 🔥 INTERMEDIATE
-    if len(words) <= 15:
+    if score <= 5:
         return "B1"
 
-    # 🔥 ADVANCED
     return "B2"

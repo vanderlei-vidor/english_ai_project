@@ -4,11 +4,12 @@ from app.models.xp import XP
 from app.models.weekly_xp import WeeklyXP
 from app.models.user import User
 
-def close_season(db):
 
+def close_season(db):
     today = date.today()
     season_month = today.strftime("%Y-%m")
 
+    # 1. Puxa o ranking necessário para gerar o histórico da temporada
     ranking = (
         db.query(User.id, XP.total_xp, User.current_league)
         .join(XP, XP.user_id == User.id)
@@ -16,31 +17,47 @@ def close_season(db):
         .all()
     )
 
-    position = 1
+    if not ranking:
+        return
 
-    for user in ranking:
+    history_records = []
+    current_position = 1
+    prev_xp = None
 
-        # 🔹 1️⃣ Salvar histórico
+    # 2. Monta a lista de histórico em memória
+    for index, user in enumerate(ranking):
+        # Opcional e elegante: Trata empates de XP mantendo a mesma posição de ranking
+        if prev_xp is not None and user.total_xp < prev_xp:
+            current_position = index + 1
+
+        prev_xp = user.total_xp
+
         history = LeagueHistory(
             user_id=user.id,
             season_month=season_month,
             league=user.current_league,
-            final_position=position,
-            total_xp=user.total_xp
+            final_position=current_position,
+            total_xp=user.total_xp or 0,
         )
-        db.add(history)
+        history_records.append(history)
 
-        # 🔹 2️⃣ Resetar XP global
-        xp_record = db.query(XP).filter(
-            XP.user_id == user.id
-        ).first()
+    try:
+        # ⚡ OTIMIZAÇÃO 1: Bulk Insert do histórico de uma só vez
+        db.add_all(history_records)
 
-        if xp_record:
-            xp_record.total_xp = 0
+        # ⚡ OTIMIZAÇÃO 2: Bulk Update (Zera o XP de TODOS os usuários em uma única query SQL!)
+        db.query(XP).update({XP.total_xp: 0}, synchronize_session=False)
 
-        position += 1
+        # ⚠️ ALERTA: Removi o WeeklyXP.delete() daqui de dentro.
+        # É altamente recomendável deixar a limpeza do XP semanal exclusivamente
+        # no arquivo 'close_week' para não bugar o progresso dos alunos no meio do mês!
 
-    # 🔹 3️⃣ Limpar Weekly XP
-    db.query(WeeklyXP).delete()
+        db.commit()
+        print(
+            f" [SUCCESS] Temporada {season_month} encerrada. {len(ranking)} usuários arquivados."
+        )
 
-    db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f" [ERROR] Falha ao fechar temporada {season_month}: {str(e)}")
+        raise e
